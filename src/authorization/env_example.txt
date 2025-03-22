@@ -1,0 +1,3 @@
+PRIVATE_KEY = 'certs/jwt-private.pem'
+PUBLIC_KEY = "certs/jwt-public.pem"
+ALGORITHM = "RS256"

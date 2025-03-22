@@ -1,0 +1,74 @@
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from typing import List
+import base64
+import os
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.backends import default_backend
+
+app = FastAPI()
+
+# In-memory storage of active connections
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: str):
+        for connection in self.active_connections:
+            await connection.send_text(message)
+
+manager = ConnectionManager()
+
+# AES Encryption & Decryption Functions
+def generate_key(secret_passphrase: str, salt: bytes):
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=16,  # 128-bit key
+        salt=salt,
+        iterations=100000,
+        backend=default_backend()
+    )
+    return kdf.derive(secret_passphrase.encode())
+
+def encrypt(plain_text: str, secret_key: bytes):
+    iv = os.urandom(16)
+    cipher = Cipher(algorithms.AES(secret_key), modes.CBC(iv), backend=default_backend())
+    encryptor = cipher.encryptor()
+
+    # PKCS7 Padding
+    pad_length = 16 - (len(plain_text) % 16)
+    padded_text = plain_text + chr(pad_length) * pad_length
+
+    encrypted_bytes = encryptor.update(padded_text.encode()) + encryptor.finalize()
+    return base64.b64encode(iv + encrypted_bytes).decode()
+
+def decrypt(encrypted_text: str, secret_key: bytes):
+    encrypted_data = base64.b64decode(encrypted_text)
+    iv = encrypted_data[:16]
+    encrypted_bytes = encrypted_data[16:]
+
+    cipher = Cipher(algorithms.AES(secret_key), modes.CBC(iv), backend=default_backend())
+    decryptor = cipher.decryptor()
+
+    decrypted_padded_text = decryptor.update(encrypted_bytes) + decryptor.finalize()
+    pad_length = decrypted_padded_text[-1]
+    return decrypted_padded_text[:-pad_length].decode()
+
+# WebSocket Chat Endpoint
+@app.websocket("/ws/{client_id}")
+async def websocket_endpoint(websocket: WebSocket, client_id: str):
+    await manager.connect(websocket)
+    try:
+        while True:
+            encrypted_message = await websocket.receive_text()  # Receive encrypted message
+            await manager.broadcast(encrypted_message)  # Forward message without decryption
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)

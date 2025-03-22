@@ -1,0 +1,10 @@
+pydantic_settings
+pydantic
+uvicorn
+fastapi
+sqlalchemy
+greenlet
+pyjwt
+cryptography
+pydantic[email]
+bcrypt

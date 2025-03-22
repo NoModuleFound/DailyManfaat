@@ -1,0 +1,23 @@
+
+$PRIVATE_KEY = "certs\jwt-private.pem"
+$PUBLIC_KEY = "certs\jwt-public.pem"
+
+if (!(Test-Path "certs")) {
+    New-Item -ItemType Directory -Path "certs" | Out-Null
+}
+
+if (!(Test-Path $PRIVATE_KEY)) {
+    Write-Host "Private key not found. Generating a new RSA key..."
+    openssl genpkey -algorithm RSA -out $PRIVATE_KEY
+} else {
+    Write-Host "Private key exists."
+}
+
+if (!(Test-Path $PUBLIC_KEY)) {
+    Write-Host "Public key not found. Generating from the private key..."
+    openssl rsa -in $PRIVATE_KEY -pubout -out $PUBLIC_KEY
+} else {
+    Write-Host "Public key exists."
+}
+
+Write-Host "Done."
